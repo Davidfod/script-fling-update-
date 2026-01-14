@@ -9,14 +9,14 @@ local originalSize = UDim2.new(0, 220, 0, 160)
 
 -- Interface GUI
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "CyberNodry_V9_5"
-ScreenGui.ResetOnSpawn = false -- Importante: Mantém a interface ativa ao morrer
+ScreenGui.Name = "CyberNodry_V9_5_PRO"
+ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
 local Main = Instance.new("Frame")
 Main.Size = originalSize
 Main.Position = UDim2.new(0.5, -110, 0.4, 0)
-Main.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+Main.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 Main.BorderSizePixel = 0
 Main.Active = true
 Main.ClipsDescendants = true
@@ -25,13 +25,13 @@ Instance.new("UICorner", Main)
 
 local Title = Instance.new("TextLabel", Main)
 Title.Size = UDim2.new(1, -60, 0, 35)
-Title.Text = "NODRY V9.5"
+Title.Text = "NODRY V9.5 + ANTI"
 Title.TextColor3 = Color3.fromRGB(0, 255, 150)
 Title.BackgroundTransparency = 1
 Title.Font = Enum.Font.GothamBold
-Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Position = UDim2.new(0, 10, 0, 0)
 
+-- Botões de Controle
 local ExitBtn = Instance.new("TextButton", Main)
 ExitBtn.Size = UDim2.new(0, 25, 0, 25)
 ExitBtn.Position = UDim2.new(1, -30, 0, 5)
@@ -70,7 +70,111 @@ StopBtn.Text = "PARAR TUDO"
 StopBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 Instance.new("UICorner", StopBtn)
 
---- LÓGICA DE INTERFACE ---
+--- SISTEMAS DE PROTEÇÃO (ANTI-FLING E NOCLIP) ---
+
+local function resetPhysics()
+    local char = LocalPlayer.Character
+    if char then
+        for _, part in pairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.Velocity = Vector3.new(0, 0, 0)
+                part.RotVelocity = Vector3.new(0, 0, 0)
+            end
+        end
+    end
+end
+
+RunService.Stepped:Connect(function()
+    local char = LocalPlayer.Character
+    if not char then return end
+
+    for _, part in pairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            -- NOCLIP: Ativa quando o fling está ligado para evitar morrer em batidas
+            if flingActive then
+                part.CanCollide = false
+            end
+
+            -- ANTI-FLING: Se algo tentar te girar/lançar muito rápido, o script anula a força
+            if part.Velocity.Magnitude > 70 or part.RotVelocity.Magnitude > 70 then
+                if not flingActive then -- Não anula se for VOCÊ atacando
+                    part.Velocity = Vector3.new(0, 0, 0)
+                    part.RotVelocity = Vector3.new(0, 0, 0)
+                end
+            end
+        end
+    end
+end)
+
+--- LÓGICA DE ATAQUE ---
+
+local function startFling()
+    if flingActive then return end
+    flingActive = true
+    AttackBtn.Text = "ATIVADO!"
+    AttackBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+
+    while flingActive do
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+        if not hrp or not hum or hum.Health <= 0 then
+            LocalPlayer.CharacterAdded:Wait()
+            task.wait(1)
+            continue
+        end
+
+        for _, tPlayer in pairs(Players:GetPlayers()) do
+            if not flingActive then break end
+            
+            if tPlayer ~= LocalPlayer and tPlayer.Character and tPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                local tHRP = tPlayer.Character.HumanoidRootPart
+                local tHum = tPlayer.Character:FindFirstChildOfClass("Humanoid")
+                
+                if tHum and tHum.Health > 0 then
+                    local bv = Instance.new("BodyVelocity")
+                    bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                    bv.Velocity = Vector3.new(9e7, 9e7, 9e7)
+                    bv.Parent = hrp
+                    
+                    local bav = Instance.new("BodyAngularVelocity")
+                    bav.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+                    bav.AngularVelocity = Vector3.new(9e7, 9e7, 9e7)
+                    bav.Parent = hrp
+
+                    local startAtk = tick()
+                    while flingActive and tPlayer.Character and tHRP.Parent and (tick() - startAtk < 1.5) do
+                        RunService.Heartbeat:Wait()
+                        if hum.Health <= 0 then break end
+                        
+                        -- Posicionamento estratégico (em cima do alvo)
+                        hrp.CFrame = tHRP.CFrame * CFrame.new(0, 0.4, 0)
+                        
+                        if tHum.Health <= 0 or tHRP.Position.Y < -50 then break end
+                    end
+                    
+                    bv:Destroy()
+                    bav:Destroy()
+                    resetPhysics()
+                    task.wait(0.05)
+                end
+            end
+        end
+        task.wait(0.1)
+    end
+    resetPhysics()
+    AttackBtn.Text = "LIGAR AUTO-FLING"
+    AttackBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
+end
+
+--- EVENTOS ---
+
+AttackBtn.MouseButton1Click:Connect(function() task.spawn(startFling) end)
+StopBtn.MouseButton1Click:Connect(function() 
+    flingActive = false 
+    resetPhysics() 
+end)
 
 MinBtn.MouseButton1Click:Connect(function()
     minimized = not minimized
@@ -88,84 +192,11 @@ end)
 
 ExitBtn.MouseButton1Click:Connect(function()
     flingActive = false
+    resetPhysics()
     ScreenGui:Destroy()
 end)
 
---- LÓGICA DE FLING (REFORMULADA) ---
-
-local function startFling()
-    if flingActive then return end
-    flingActive = true
-    AttackBtn.Text = "ATIVADO!"
-    AttackBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
-
-    while flingActive do
-        -- Sempre pega o personagem atual dentro do loop
-        local char = LocalPlayer.Character
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        local hum = char and char:FindFirstChildOfClass("Humanoid")
-
-        -- Se o personagem não existe ou morreu, espera renascer
-        if not hrp or not hum or hum.Health <= 0 then
-            LocalPlayer.CharacterAdded:Wait()
-            task.wait(1) -- Pequena pausa para carregar o corpo
-            continue -- Reinicia o loop para pegar os novos dados
-        end
-
-        for _, tPlayer in pairs(Players:GetPlayers()) do
-            if not flingActive then break end
-            
-            -- Verifica se o alvo é válido
-            if tPlayer ~= LocalPlayer and tPlayer.Character and tPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                local tHRP = tPlayer.Character.HumanoidRootPart
-                local tHum = tPlayer.Character:FindFirstChildOfClass("Humanoid")
-                
-                -- Se o seu personagem morrer durante o ataque, sai do loop interno
-                if not hrp.Parent or hum.Health <= 0 then break end
-
-                local bv = Instance.new("BodyVelocity")
-                bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                bv.Velocity = Vector3.new(9e7, 9e7, 9e7)
-                bv.Parent = hrp
-                
-                local bav = Instance.new("BodyAngularVelocity")
-                bav.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-                bav.AngularVelocity = Vector3.new(9e7, 9e7, 9e7)
-                bav.Parent = hrp
-
-                local startAtk = tick()
-                while flingActive and tPlayer.Character and tPlayer.Character:FindFirstChild("HumanoidRootPart") and (tick() - startAtk < 2.5) do
-                    RunService.Heartbeat:Wait()
-                    
-                    -- Verifica novamente se você está vivo no meio do ataque
-                    if not hrp or not hrp.Parent or hum.Health <= 0 then break end
-
-                    for _, part in pairs(char:GetDescendants()) do
-                        if part:IsA("BasePart") then part.CanCollide = false end
-                    end
-
-                    hrp.CFrame = tHRP.CFrame * CFrame.new(0, math.random(-1,1)/10, 0)
-                    
-                    if tHum and (tHum.Health <= 0 or tHRP.Position.Y < -50 or tHRP.Velocity.Magnitude > 100) then 
-                        break 
-                    end
-                end
-                
-                if bv then bv:Destroy() end
-                if bav then bav:Destroy() end
-                task.wait(0.05)
-            end
-        end
-        task.wait(0.1)
-    end
-    AttackBtn.Text = "LIGAR AUTO-FLING"
-    AttackBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
-end
-
-AttackBtn.MouseButton1Click:Connect(function() task.spawn(startFling) end)
-StopBtn.MouseButton1Click:Connect(function() flingActive = false end)
-
--- Arrastar (Draggable)
+-- Draggable logic
 local dragging, dragStart, startP
 Main.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
